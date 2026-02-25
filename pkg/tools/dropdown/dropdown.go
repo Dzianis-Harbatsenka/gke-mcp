@@ -12,49 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clusterdropdown
+package dropdown
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"sync"
 
 	"github.com/GoogleCloudPlatform/gke-mcp/pkg/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var pendingSelections sync.Map
-
 const (
 	// htmlFilePath is the absolute path to the UI index.html file.
 	// In a real production environment, this might be configurable or relative to the binary.
-	htmlFilePath = "/usr/local/google/home/dharb/project/gke/agentic_space_onboarding/gke-ui-components-mcp/dist/index.html"
-	resourceURI  = "ui://gke-ui-components/index.html"
+	htmlFilePath = "pkg/tools/ui/dist/dropdown/index.html"
+	resourceURI  = "ui://dropdown/index.html"
 	mimeType     = "text/html;profile=mcp-app"
 )
 
-type clusterDropdownArgs struct {
+type dropdownArgs struct {
 	Title   string   `json:"title,omitempty" jsonschema:"Title to display above the dropdown"`
 	Options []string `json:"options" jsonschema:"description=List of resources to display in the dropdown"`
 }
 
 type PendingResponse struct {
-	Status        string   `json:"status"`
-	Options       []string `json:"options"`
-	InteractionID string   `json:"interactionId"`
-	Message       string   `json:"message"`
+	Status  string   `json:"status"`
+	Options []string `json:"options"`
+	Message string   `json:"message"`
 }
 
-type submitSelectionArgs struct {
-	InteractionID string `json:"interactionId" jsonschema:"The interaction ID provided by the cluster_dropdown tool."`
-	Selection     string `json:"selection" jsonschema:"The user's selection."`
-}
-
-// Install registers the cluster_dropdown tool with the MCP server.
+// Install registers the dropdown tool with the MCP server.
 func Install(ctx context.Context, s *mcp.Server, c *config.Config) error {
 	mcp.AddTool(s, &mcp.Tool{
-		Name: "cluster_dropdown",
+		Name: "dropdown",
 		Description: `Renders an interactive UI dropdown for the user to select an item from a list.
 Use this tool when you need the user to choose one option from a set of available resources (e.g., clusters, regions, namespaces).
 You MUST provide a valid array of 1 or more options. 
@@ -65,6 +57,7 @@ Do NOT list the options in your text response; the UI itself serves as the list 
 		Meta: mcp.Meta{
 			"ui": map[string]interface{}{
 				"resourceUri": resourceURI,
+				"visibility":  []string{"app"},
 			},
 		},
 		InputSchema: map[string]interface{}{
@@ -84,12 +77,7 @@ Do NOT list the options in your text response; the UI itself serves as the list 
 			},
 			"required": []string{"options"},
 		},
-	}, clusterDropdown)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "internal_submit_selection",
-		Description: "Submit a selection for a pending interaction. This tool is called by the frontend to unblock the cluster_dropdown tool.",
-	}, submitSelection)
+	}, dropdownHandler)
 
 	s.AddResource(&mcp.Resource{
 		Name:     "GKE Resource Dropdown UI",
@@ -116,51 +104,26 @@ Do NOT list the options in your text response; the UI itself serves as the list 
 	return nil
 }
 
-func clusterDropdown(ctx context.Context, request *mcp.CallToolRequest, args *clusterDropdownArgs) (*mcp.CallToolResult, any, error) {
-	// Use a constant ID for now since we can't easily communicate a generated one while blocking
-	interactionID := "current"
+func dropdownHandler(ctx context.Context, request *mcp.CallToolRequest, args *dropdownArgs) (*mcp.CallToolResult, any, error) {
+	// Create the pending response payload
+	payload := PendingResponse{
+		Status:  "pending_user_input",
+		Options: args.Options,
+		Message: "Please present these options to the user. Wait until selection is made",
+	}
 
-	// Create a channel for the selection
-	selectionChan := make(chan string)
-	pendingSelections.Store(interactionID, selectionChan)
-	defer pendingSelections.Delete(interactionID)
+	// Marshal the payload into a JSON string.
+	// The LLM will read this string, recognize it as JSON, and parse it internally.
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal pending response: %w", err)
+	}
 
-	// Wait for selection
-	select {
-	case selection := <-selectionChan:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{
-					Text: fmt.Sprintf("User selected: %s", selection),
-				},
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: string(jsonBytes),
 			},
-		}, nil, nil
-	case <-ctx.Done():
-		return nil, nil, fmt.Errorf("user selection cancelled or timed out: %w", ctx.Err())
-	}
-}
-
-func submitSelection(ctx context.Context, request *mcp.CallToolRequest, args *submitSelectionArgs) (*mcp.CallToolResult, any, error) {
-	// Default to "current" if not provided, or strictly require match
-	id := args.InteractionID
-	if id == "" {
-		id = "current"
-	}
-
-	val, ok := pendingSelections.Load(id)
-	if !ok {
-		return nil, nil, fmt.Errorf("no pending interaction found for ID %s", id)
-	}
-	ch := val.(chan string)
-
-	select {
-	case ch <- args.Selection:
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Selection submitted"},
-			},
-		}, nil, nil
-	case <-ctx.Done():
-		return nil, nil, fmt.Errorf("failed to submit selection (receiver not ready): %w", ctx.Err())
-	}
+		},
+	}, nil, nil
 }

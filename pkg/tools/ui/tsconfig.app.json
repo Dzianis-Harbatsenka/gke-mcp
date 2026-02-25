@@ -29,6 +29,7 @@
     "noUncheckedSideEffectImports": true
   },
   "include": [
-    "timeserieschart/src"
+    "timeserieschart/src",
+    "dropdown/src"
   ]
 }

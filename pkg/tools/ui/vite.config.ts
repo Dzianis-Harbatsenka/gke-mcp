@@ -6,12 +6,16 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+const appName = process.env.VITE_APP_NAME || 'timeserieschart'
+
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
   build: {
+    outDir: 'dist',
+    emptyOutDir: false,
     rollupOptions: {
       input: {
-        timeserieschart: resolve(__dirname, 'timeserieschart/index.html')
+        [appName]: resolve(__dirname, `${appName}/index.html`)
       }
     }
   }

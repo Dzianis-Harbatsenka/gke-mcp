@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:timeseries": "VITE_APP_NAME=timeserieschart vite build",
+    "build:dropdown": "VITE_APP_NAME=dropdown vite build",
+    "build": "tsc -b && npm run build:timeseries && npm run build:dropdown",
     "lint": "eslint ."
   },
   "devDependencies": {

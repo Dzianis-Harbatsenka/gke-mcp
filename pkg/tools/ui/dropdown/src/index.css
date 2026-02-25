@@ -1,0 +1,134 @@
+:root {
+  font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  --primary-color: #1976d2;
+  --primary-bg: #e3f2fd;
+  --text-primary: #212121;
+  --text-secondary: #616161;
+  --text-hint: #757575;
+  --bg-surface: #ffffff;
+  --bg-disabled: #f5f5f5;
+  --border-color: #bdbdbd;
+  --border-hover: #424242;
+  --border-disabled: #e0e0e0;
+}
+
+.container {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.input-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.label {
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.select-wrapper {
+  position: relative;
+  font-weight: 800;
+}
+
+.select {
+  width: 100%;
+  padding: 12px 16px;
+  padding-right: 32px;
+  /* Space for arrow */
+  border: 1px solid var(--border-color);
+  /* Material Grey 400 */
+  border-radius: 4px;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 1rem;
+  appearance: none;
+  /* Remove default arrow */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.select:disabled {
+  background-color: var(--bg-disabled);
+  /* Light grey background */
+  color: var(--text-secondary);
+  /* Darker text than default disabled */
+  border-color: var(--border-disabled);
+  cursor: not-allowed;
+  opacity: 1;
+  /* Override default opacity */
+}
+
+/* When submitted, we want it to look "selected" but static */
+.select.submitted {
+  border-color: var(--primary-color);
+  /* Keep blue border */
+  background-color: var(--primary-bg);
+  /* Light blue background like selected-value */
+  color: var(--primary-color);
+}
+
+.select:hover {
+  border-color: var(--border-hover);
+  /* Darker grey on hover */
+}
+
+.select:focus {
+  border-color: var(--primary-color);
+  /* Material Blue 700 */
+  outline: none;
+  border-width: 2px;
+  padding: 11px 15px;
+  /* Adjust for border width change to prevent jump */
+}
+
+/* Custom Arrow */
+.select-arrow {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+.select:focus+.select-arrow {
+  border-top-color: var(--primary-color);
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* Selected Value Display */
+.selected-value {
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--primary-color);
+  font-weight: 500;
+  background-color: var(--primary-bg);
+  /* Light blue background */
+  padding: 8px 12px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.loading {
+  padding: 24px;
+  color: var(--text-hint);
+  text-align: center;
+  font-style: italic;
+}
