@@ -220,9 +220,9 @@ func startMCPServer(ctx context.Context, opts startOptions) {
 		server := &http.Server{
 			Addr:              addr,
 			Handler:           corsHandler,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       5 * time.Second,
-			WriteTimeout:      10 * time.Second,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       120 * time.Second, // Allow for long-running tool calls
+			WriteTimeout:      120 * time.Second, // Allow for long-running tool calls
 			IdleTimeout:       120 * time.Second,
 		}
 		err = server.ListenAndServe()
