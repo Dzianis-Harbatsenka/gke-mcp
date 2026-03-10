@@ -9,6 +9,7 @@
 # Variables
 BINARY_NAME := gke-mcp
 DOCKER_IMAGE := $(BINARY_NAME)
+UI_DIR := pkg/tools/ui
 
 help: ## Display available commands
 	@echo "GKE MCP Server - Available Commands"
@@ -19,6 +20,11 @@ build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
 	go build -o $(BINARY_NAME) .
 	@echo "✓ Built $(BINARY_NAME)"
+
+build-ui: ## Build the UI TypeScript code
+	@echo "Building UI..."
+	@npm --prefix $(UI_DIR) run build
+	@echo "✓ UI built"
 
 run: build ## Build and run the server
 	./$(BINARY_NAME)
@@ -56,3 +62,9 @@ docker-build: ## Build the docker image
 docker-run: docker-build ## Build and run the docker image
 	@echo "Running docker image $(DOCKER_IMAGE)..."
 	docker run -it --rm -p 8080:8080 $(DOCKER_IMAGE) --server-mode http --server-host 0.0.0.0
+<<<<<<< HEAD
+=======
+
+http: build build-ui
+	./$(BINARY_NAME) --server-mode http --server-port 8080
+>>>>>>> cdb801e (Observability - initial setup)
