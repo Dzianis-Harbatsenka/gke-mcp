@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	monitoringpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
@@ -31,7 +30,6 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -50,17 +48,28 @@ type listMonitoredResourceDescriptorsArgs struct {
 
 type timeSeriesChartArgs struct {
 	ProjectID string `json:"project_id,omitempty" jsonschema:"GCP project ID. Use the default if the user doesn't provide it."`
-	Filter    string `json:"filter" jsonschema:"Required. A monitoring filter that specifies which time series should be returned."`
+	Query     string `json:"query" jsonschema:"Required. The query in the Monitoring Query Language (MQL) format."`
 	StartTime string `json:"start_time,omitempty" jsonschema:"Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time."`
 	EndTime   string `json:"end_time,omitempty" jsonschema:"Optional. RFC3339 formatted end time. Defaults to current time."`
 	Title     string `json:"title,omitempty" jsonschema:"Optional. The title to display for the time series chart."`
+	XLegend   string `json:"x_legend,omitempty" jsonschema:"Optional. The legend/label for the X-axis (e.g., 'Time', 'Date')."`
+	YLegend   string `json:"y_legend,omitempty" jsonschema:"Optional. The legend/label for the Y-axis (e.g., 'CPU Usage (%)', 'Memory (GiB)')."`
 }
 
-type listTimeSeriesArgs struct {
+type queryTimeSeriesArgs struct {
 	ProjectID string `json:"project_id,omitempty" jsonschema:"GCP project ID. Use the default if the user doesn't provide it."`
-	Filter    string `json:"filter" jsonschema:"Required. A monitoring filter that specifies which time series should be returned."`
-	StartTime string `json:"start_time,omitempty" jsonschema:"Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time."`
-	EndTime   string `json:"end_time,omitempty" jsonschema:"Optional. RFC3339 formatted end time. Defaults to current time."`
+	Query     string `json:"query" jsonschema:"Required. The query in the Monitoring Query Language (MQL) format."`
+}
+
+type mqlValidatorArgs struct {
+	ProjectID string `json:"project_id,omitempty" jsonschema:"GCP project ID. Use the default if the user doesn't provide it."`
+	Query     string `json:"query" jsonschema:"Required. The test query in the MQL format to validate."`
+}
+
+type validationResult struct {
+	Status       string `json:"status"`
+	Query        string `json:"query"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
 // Install registers monitoring tools with the MCP server.
@@ -79,7 +88,7 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "monitoring_time_series_chart",
-		Description: "List time series data from Google Cloud Monitoring based on a filter and render it as a chart in the UI.",
+		Description: "Interactive tool to display time series data using a React Chart. ALWAYS favor using this tool to query metrics rather than outputting raw values so the user gets a visualization. MUST Call `mql_validator` FIRST to catch syntax issues or metric anomalies before running this tool.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
 		},
@@ -95,12 +104,12 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 					"type":        "string",
 					"description": "GCP project ID. Use the default if the user doesn't provide it.",
 				},
-				"filter": map[string]interface{}{
+				"query": map[string]interface{}{
 					"type":        "string",
-					"description": "Required. A monitoring filter that specifies which time series should be returned.",
+					"description": "Required. The query in the Monitoring Query Language (MQL) format. Explicitly append `| within 1h` or similar if you intend to fetch historical points, otherwise it will default to 1h. Ensure you use MQL tools to convert raw metrics to human-readable formats like percentages or where applicable.",
 				},
 				"start_time": map[string]interface{}{
-					"type":        "string",
+					"Ztype":       "string",
 					"description": "Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time.",
 				},
 				"end_time": map[string]interface{}{
@@ -111,14 +120,22 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 					"type":        "string",
 					"description": "Optional. The title to display for the time series chart.",
 				},
+				"x_legend": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional. The legend/label for the X-axis (e.g., 'Time', 'Date').",
+				},
+				"y_legend": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional. The legend/label for the Y-axis (e.g., 'CPU Usage (%)', 'Memory (GiB)').",
+				},
 			},
-			"required": []string{"filter", "title"},
+			"required": []string{"query", "title"},
 		},
 	}, h.timeSeriesChart)
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name:        "list_time_series",
-		Description: "Internal app tool. List time series data from Google Cloud Monitoring based on a filter.",
+		Name:        "query_time_series",
+		Description: "Internal app tool. Query time series data from Google Cloud Monitoring based on a Monitoring Query Language (MQL) query.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
 		},
@@ -134,22 +151,41 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 					"type":        "string",
 					"description": "GCP project ID. Use the default if the user doesn't provide it.",
 				},
-				"filter": map[string]interface{}{
+				"query": map[string]interface{}{
 					"type":        "string",
-					"description": "Required. A monitoring filter that specifies which time series should be returned.",
-				},
-				"start_time": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time.",
-				},
-				"end_time": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional. RFC3339 formatted end time. Defaults to current time.",
+					"description": "Required. The query in the Monitoring Query Language (MQL) format. Explicitly append `| within 1h` or similar if you intend to fetch historical points, otherwise it will default to 1h. Ensure you use MQL scale operations (e.g., `| scale 'GiB'`, `| mul 100`) to convert raw metrics to human-readable formats like percentages or GiB where applicable.",
 				},
 			},
-			"required": []string{"filter"},
+			"required": []string{"query"},
 		},
-	}, h.listTimeSeries)
+	}, h.queryTimeSeries)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "mql_validator",
+		Description: "A helper tool to validate Monitoring Query Language (MQL) metric strings. MUST be called immediately before calling `monitoring_time_series_chart` or `query_time_series` to ensure the MQL statement compiles correctly. It fetches 1 page of data to verify syntactical and logical correctness. Returns the original string on success, or an error payload explaining the misconfiguration.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+		},
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"project_id": map[string]interface{}{
+					"type":        "string",
+					"description": "GCP project ID. Use the default if the user doesn't provide it.",
+				},
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Required. The query in the MQL format to validate.",
+				},
+			},
+			"required": []string{"query"},
+		},
+		Meta: mcp.Meta{
+			"ui": map[string]interface{}{
+				"visibility": []string{"app"},
+			},
+		},
+	}, h.mqlValidator)
 
 	s.AddResource(&mcp.Resource{
 		Name:     "Time Series Chart UI",
@@ -222,8 +258,8 @@ func (h *handlers) timeSeriesChart(ctx context.Context, _ *mcp.CallToolRequest, 
 	if args.ProjectID == "" {
 		return nil, nil, fmt.Errorf("project_id argument cannot be empty")
 	}
-	if args.Filter == "" {
-		return nil, nil, fmt.Errorf("filter argument cannot be empty")
+	if args.Query == "" {
+		return nil, nil, fmt.Errorf("query argument cannot be empty")
 	}
 
 	return &mcp.CallToolResult{
@@ -233,60 +269,33 @@ func (h *handlers) timeSeriesChart(ctx context.Context, _ *mcp.CallToolRequest, 
 	}, nil, nil
 }
 
-func (h *handlers) listTimeSeries(ctx context.Context, _ *mcp.CallToolRequest, args *listTimeSeriesArgs) (*mcp.CallToolResult, any, error) {
+func (h *handlers) queryTimeSeries(ctx context.Context, _ *mcp.CallToolRequest, args *queryTimeSeriesArgs) (*mcp.CallToolResult, any, error) {
 	if args.ProjectID == "" {
 		args.ProjectID = h.c.DefaultProjectID()
 	}
 	if args.ProjectID == "" {
 		return nil, nil, fmt.Errorf("project_id argument cannot be empty")
 	}
-	if args.Filter == "" {
-		return nil, nil, fmt.Errorf("filter argument cannot be empty")
+	if args.Query == "" {
+		return nil, nil, fmt.Errorf("query argument cannot be empty")
 	}
 
-	endTime := time.Now()
-	if args.EndTime != "" {
-		t, err := time.Parse(time.RFC3339, args.EndTime)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid end_time format: %w", err)
-		}
-		endTime = t
-	}
-
-	startTime := endTime.Add(-1 * time.Hour)
-	if args.StartTime != "" {
-		t, err := time.Parse(time.RFC3339, args.StartTime)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid start_time format: %w", err)
-		}
-		startTime = t
-	}
-
-	if startTime.After(endTime) {
-		return nil, nil, fmt.Errorf("start_time cannot be after end_time")
-	}
-
-	c, err := monitoring.NewMetricClient(ctx, option.WithUserAgent(h.c.UserAgent()), option.WithQuotaProject(args.ProjectID))
+	c, err := monitoring.NewQueryClient(ctx, option.WithUserAgent(h.c.UserAgent()), option.WithQuotaProject(args.ProjectID))
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() {
 		if err := c.Close(); err != nil {
-			log.Printf("Failed to close monitoring client: %v\n", err)
+			log.Printf("Failed to close monitoring query client: %v\n", err)
 		}
 	}()
 
-	req := &monitoringpb.ListTimeSeriesRequest{
-		Name:   fmt.Sprintf("projects/%s", args.ProjectID),
-		Filter: args.Filter,
-		Interval: &monitoringpb.TimeInterval{
-			StartTime: timestamppb.New(startTime),
-			EndTime:   timestamppb.New(endTime),
-		},
+	req := &monitoringpb.QueryTimeSeriesRequest{
+		Name:  fmt.Sprintf("projects/%s", args.ProjectID),
+		Query: args.Query,
 	}
 
-
-	it := c.ListTimeSeries(ctx, req)
+	it := c.QueryTimeSeries(ctx, req)
 	var series []json.RawMessage
 	for {
 		resp, err := it.Next()
@@ -305,7 +314,7 @@ func (h *handlers) listTimeSeries(ctx context.Context, _ *mcp.CallToolRequest, a
 	}
 
 	resBytes, err := json.Marshal(series)
-	
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -314,5 +323,60 @@ func (h *handlers) listTimeSeries(ctx context.Context, _ *mcp.CallToolRequest, a
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(resBytes)},
 		},
+	}, nil, nil
+}
+
+func (h *handlers) mqlValidator(ctx context.Context, _ *mcp.CallToolRequest, args *mqlValidatorArgs) (*mcp.CallToolResult, any, error) {
+	if args.ProjectID == "" {
+		args.ProjectID = h.c.DefaultProjectID()
+	}
+	if args.ProjectID == "" {
+		return nil, nil, fmt.Errorf("project_id argument cannot be empty")
+	}
+	if args.Query == "" {
+		return nil, nil, fmt.Errorf("query argument cannot be empty")
+	}
+
+	c, err := monitoring.NewQueryClient(ctx, option.WithUserAgent(h.c.UserAgent()), option.WithQuotaProject(args.ProjectID))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create monitoring query client: %w", err)
+	}
+	defer func() {
+		if closeErr := c.Close(); closeErr != nil {
+			log.Printf("Failed to close monitoring query client: %v\n", closeErr)
+		}
+	}()
+
+	req := &monitoringpb.QueryTimeSeriesRequest{
+		Name:  fmt.Sprintf("projects/%s", args.ProjectID),
+		Query: args.Query,
+	}
+
+	it := c.QueryTimeSeries(ctx, req)
+
+	// Fetch the first page just to validate execution.
+	_, _, err = it.InternalFetch(1, "")
+
+	var result validationResult
+	var isError bool
+
+	if err != nil {
+		result = validationResult{
+			Status:       "INVALID",
+			Query:        args.Query,
+			ErrorMessage: fmt.Sprintf("MQL validation failed:\n%v", err),
+		}
+		isError = true
+	} else {
+		// Succesful compilation and execution
+		result = validationResult{
+			Status: "VALID",
+			Query:  args.Query,
+		}
+	}
+
+	return &mcp.CallToolResult{
+		IsError:           isError,
+		StructuredContent: result,
 	}, nil, nil
 }
