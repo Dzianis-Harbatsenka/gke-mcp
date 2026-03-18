@@ -40,6 +40,7 @@ import (
 
 const (
 	geminiInstructionsURI = "mcp://gke/pkg/install/GEMINI.md"
+	mcpAppsExtensionID    = "io.modelcontextprotocol/ui"
 )
 
 var (
@@ -153,7 +154,9 @@ func startMCPServer(ctx context.Context, opts startOptions) {
 		}
 	}
 
-	s := mcp.NewServer(
+	var s *mcp.Server
+
+	s = mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "GKE MCP Server",
 			Version: version,
@@ -164,6 +167,17 @@ func startMCPServer(ctx context.Context, opts startOptions) {
 				Tools:     &mcp.ToolCapabilities{ListChanged: true},
 				Resources: &mcp.ResourceCapabilities{ListChanged: true},
 				Prompts:   &mcp.PromptCapabilities{ListChanged: true},
+			},
+			InitializedHandler: func(ctx context.Context, req *mcp.InitializedRequest) {
+				params := req.Session.InitializeParams()
+				if params.Capabilities != nil && params.Capabilities.Extensions != nil {
+					if _, ok := params.Capabilities.Extensions[mcpAppsExtensionID]; ok {
+						log.Println("Verified: Client host supports MCP Apps. Registering apps...")
+						if err := tools.InstallApps(ctx, s, c); err != nil {
+							log.Printf("Failed to install apps: %v\n", err)
+						}
+					}
+				}
 			},
 		},
 	)
@@ -221,9 +235,9 @@ func startMCPServer(ctx context.Context, opts startOptions) {
 			Addr:              addr,
 			Handler:           corsHandler,
 			ReadHeaderTimeout: 10 * time.Second,
-			ReadTimeout:       120 * time.Second, // Allow for long-running tool calls
-			WriteTimeout:      120 * time.Second, // Allow for long-running tool calls
-			IdleTimeout:       120 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       10 * time.Second,
 		}
 		err = server.ListenAndServe()
 	default:

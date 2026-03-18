@@ -49,8 +49,6 @@ type listMonitoredResourceDescriptorsArgs struct {
 type timeSeriesChartArgs struct {
 	ProjectID string `json:"project_id,omitempty" jsonschema:"GCP project ID. Use the default if the user doesn't provide it."`
 	Query     string `json:"query" jsonschema:"Required. The query in the Monitoring Query Language (MQL) format."`
-	StartTime string `json:"start_time,omitempty" jsonschema:"Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time."`
-	EndTime   string `json:"end_time,omitempty" jsonschema:"Optional. RFC3339 formatted end time. Defaults to current time."`
 	Title     string `json:"title,omitempty" jsonschema:"Optional. The title to display for the time series chart."`
 	XLegend   string `json:"x_legend,omitempty" jsonschema:"Optional. The legend/label for the X-axis (e.g., 'Time', 'Date')."`
 	YLegend   string `json:"y_legend,omitempty" jsonschema:"Optional. The legend/label for the Y-axis (e.g., 'CPU Usage (%)', 'Memory (GiB)')."`
@@ -86,6 +84,15 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 		},
 	}, h.listMRDescriptor)
 
+	return nil
+}
+
+// InstallApps registers monitoring tools that require 'apps' extension support.
+func InstallApps(_ context.Context, s *mcp.Server, c *config.Config) error {
+	h := &handlers{
+		c: c,
+	}
+
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "monitoring_time_series_chart",
 		Description: "Interactive tool to display time series data using a React Chart. ALWAYS favor using this tool to query metrics rather than outputting raw values so the user gets a visualization. MUST Call `mql_validator` FIRST to catch syntax issues or metric anomalies before running this tool.",
@@ -107,14 +114,6 @@ func Install(_ context.Context, s *mcp.Server, c *config.Config) error {
 				"query": map[string]interface{}{
 					"type":        "string",
 					"description": "Required. The query in the Monitoring Query Language (MQL) format. Explicitly append `| within 1h` or similar if you intend to fetch historical points, otherwise it will default to 1h. Ensure you use MQL tools to convert raw metrics to human-readable formats like percentages or where applicable.",
-				},
-				"start_time": map[string]interface{}{
-					"Ztype":       "string",
-					"description": "Optional. RFC3339 formatted start time. Defaults to 1 hour before end_time.",
-				},
-				"end_time": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional. RFC3339 formatted end time. Defaults to current time.",
 				},
 				"title": map[string]interface{}{
 					"type":        "string",

@@ -40,7 +40,6 @@ func Install(ctx context.Context, s *mcp.Server, c *config.Config) error {
 		cluster.Install,
 		clustertoolkit.Install,
 		deploy.Install,
-		dropdown.Install,
 		giq.Install,
 		logging.Install,
 		monitoring.Install,
@@ -54,6 +53,22 @@ func Install(ctx context.Context, s *mcp.Server, c *config.Config) error {
 			return err
 		}
 	}
-	
+
+	return nil
+}
+
+// InstallApps registers MCP tools that require a client host with 'apps' extension support.
+func InstallApps(ctx context.Context, s *mcp.Server, c *config.Config) error {
+	installers := []installer{
+		dropdown.Install,
+		monitoring.InstallApps,
+	}
+
+	for _, installer := range installers {
+		if err := installer(ctx, s, c); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
