@@ -27,7 +27,7 @@ import (
 const (
 	// htmlFilePath is the absolute path to the UI index.html file.
 	// In a real production environment, this might be configurable or relative to the binary.
-	htmlFilePath = "pkg/tools/ui/dist/dropdown/index.html"
+	htmlFilePath = "ui/dist/apps/dropdown/index.html"
 	resourceURI  = "ui://dropdown/index.html"
 	mimeType     = "text/html;profile=mcp-app"
 )

@@ -9,7 +9,7 @@
 # Variables
 BINARY_NAME := gke-mcp
 DOCKER_IMAGE := $(BINARY_NAME)
-UI_DIR := pkg/tools/ui
+UI_DIR := ui
 
 help: ## Display available commands
 	@echo "GKE MCP Server - Available Commands"
@@ -26,13 +26,21 @@ build-ui: ## Build the UI TypeScript code
 	@npm --prefix $(UI_DIR) run build
 	@echo "✓ UI built"
 
-run: build ## Build and run the server
+run: build build-ui ## Build and run the server
 	./$(BINARY_NAME)
+
+run-http: build build-ui
+	./$(BINARY_NAME) --server-mode http --server-port 8080
 
 install: ## Install the binary to GOPATH/bin
 	@echo "Installing $(BINARY_NAME)..."
 	go install .
 	@echo "✓ Installed to $(shell go env GOPATH)/bin/$(BINARY_NAME)"
+
+install-ui: ## Install the UI npm packages
+	@echo "Installing UI..."
+	@npm --prefix $(UI_DIR) install
+	@echo "✓ Installed UI to $(UI_DIR)"
 
 test: ## Run tests
 	@echo "Running tests..."
@@ -62,6 +70,3 @@ docker-build: ## Build the docker image
 docker-run: docker-build ## Build and run the docker image
 	@echo "Running docker image $(DOCKER_IMAGE)..."
 	docker run -it --rm -p 8080:8080 $(DOCKER_IMAGE) --server-mode http --server-host 0.0.0.0
-
-http: build build-ui
-	./$(BINARY_NAME) --server-mode http --server-port 8080

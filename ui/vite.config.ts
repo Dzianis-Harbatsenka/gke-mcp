@@ -15,7 +15,7 @@ export default defineConfig({
     emptyOutDir: false,
     rollupOptions: {
       input: {
-        [appName]: resolve(__dirname, `${appName}/index.html`)
+        [appName]: resolve(__dirname, `apps/${appName}/index.html`)
       }
     }
   }

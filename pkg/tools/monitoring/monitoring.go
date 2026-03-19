@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	htmlFilePath = "pkg/tools/ui/dist/timeserieschart/index.html"
+	htmlFilePath = "ui/dist/apps/timeserieschart/index.html"
 	resourceURI  = "ui://monitoring_time_series_chart/index.html"
 	mimeType     = "text/html;profile=mcp-app"
 )
